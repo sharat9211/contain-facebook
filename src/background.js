@@ -1,13 +1,11 @@
 // Param values from https://developer.mozilla.org/Add-ons/WebExtensions/API/contextualIdentities/create
-const FACEBOOK_CONTAINER_NAME = "Facebook";
-const FACEBOOK_CONTAINER_COLOR = "blue";
-const FACEBOOK_CONTAINER_ICON = "briefcase";
-const FACEBOOK_DOMAINS = [
-  "facebook.com", "www.facebook.com", "fb.com", "fbcdn.net", "cdn.fbsbx.com",
-  "instagram.com", "www.instagram.com",
-  "messenger.com", "www.messenger.com",
-  "whatsapp.com", "www.whatsapp.com", "web.whatsapp.com", "cdn.whatsapp.net", "www-cdn.whatsapp.net",
-  "atdmt.com"
+const GOOGLE_CONTAINER_NAME = "Google";
+const GOOGLE_CONTAINER_COLOR = "red";
+const GOOGLE_CONTAINER_ICON = "briefcase";
+const GOOGLE_DOMAINS = [
+  "google.com", "www.google.com", "abc.xyz", "google-analytics.com", "gmail.com", "youtube.com",
+  "www.abc.xyz", "www.google-analytics.com", "www.gmail.com", "www.youtube.com", "doubleclick.net",
+  "www.doubleclick.net", "ad.doubleclick.net", "android.com", "www.android.com", "developer.android.com"
 ];
 
 const MAC_ADDON_ID = "@testpilot-containers";
@@ -19,7 +17,7 @@ const canceledRequests = {};
 const tabsWaitingToLoad = {};
 const facebookHostREs = [];
 
-async function isMACAddonEnabled () {
+async function isMACAddonEnabled() {
   try {
     const macAddonInfo = await browser.management.get(MAC_ADDON_ID);
     if (macAddonInfo.enabled) {
@@ -32,23 +30,25 @@ async function isMACAddonEnabled () {
   return false;
 }
 
-async function setupMACAddonListeners () {
+async function setupMACAddonListeners() {
   browser.runtime.onMessageExternal.addListener((message, sender) => {
     if (sender.id !== "@testpilot-containers") {
       return;
     }
     switch (message.method) {
-    case "MACListening":
-      sendJailedDomainsToMAC();
-      break;
+      case "MACListening":
+        sendJailedDomainsToMAC();
+        break;
     }
   });
-  function disabledExtension (info) {
+
+  function disabledExtension(info) {
     if (info.id === MAC_ADDON_ID) {
       macAddonEnabled = false;
     }
   }
-  function enabledExtension (info) {
+
+  function enabledExtension(info) {
     if (info.id === MAC_ADDON_ID) {
       macAddonEnabled = true;
     }
@@ -59,11 +59,11 @@ async function setupMACAddonListeners () {
   browser.management.onDisabled.addListener(disabledExtension);
 }
 
-async function sendJailedDomainsToMAC () {
+async function sendJailedDomainsToMAC() {
   try {
     return await browser.runtime.sendMessage(MAC_ADDON_ID, {
       method: "jailedDomains",
-      urls: FACEBOOK_DOMAINS.map((domain) => {
+      urls: GOOGLE_DOMAINS.map((domain) => {
         return `https://${domain}/`;
       })
     });
@@ -73,7 +73,7 @@ async function sendJailedDomainsToMAC () {
   }
 }
 
-async function getMACAssignment (url) {
+async function getMACAssignment(url) {
   if (!macAddonEnabled) {
     return false;
   }
@@ -89,7 +89,7 @@ async function getMACAssignment (url) {
   }
 }
 
-function cancelRequest (tab, options) {
+function cancelRequest(tab, options) {
   // we decided to cancel the request at this point, register canceled request
   canceledRequests[tab.id] = {
     requestIds: {
@@ -110,14 +110,14 @@ function cancelRequest (tab, options) {
   }, 2000);
 }
 
-function shouldCancelEarly (tab, options) {
+function shouldCancelEarly(tab, options) {
   // we decided to cancel the request at this point
   if (!canceledRequests[tab.id]) {
     cancelRequest(tab, options);
   } else {
     let cancelEarly = false;
     if (canceledRequests[tab.id].requestIds[options.requestId] ||
-        canceledRequests[tab.id].urls[options.url]) {
+      canceledRequests[tab.id].urls[options.url]) {
       // same requestId or url from the same tab
       // this is a redirect that we have to cancel early to prevent opening two tabs
       cancelEarly = true;
@@ -132,13 +132,13 @@ function shouldCancelEarly (tab, options) {
   return false;
 }
 
-function generateFacebookHostREs () {
-  for (let facebookDomain of FACEBOOK_DOMAINS) {
+function generateFacebookHostREs() {
+  for (let facebookDomain of GOOGLE_DOMAINS) {
     facebookHostREs.push(new RegExp(`^(.*\\.)?${facebookDomain}$`));
   }
 }
 
-async function clearFacebookCookies () {
+async function clearFacebookCookies() {
   // Clear all facebook cookies
   const containers = await browser.contextualIdentities.query({});
   containers.push({
@@ -147,20 +147,20 @@ async function clearFacebookCookies () {
 
   let macAssignments = [];
   if (macAddonEnabled) {
-    const promises = FACEBOOK_DOMAINS.map(async facebookDomain => {
-      const assigned = await getMACAssignment(`https://${facebookDomain}/`);
-      return assigned ? facebookDomain : null;
+    const promises = GOOGLE_DOMAINS.map(async googleDomain => {
+      const assigned = await getMACAssignment(`https://${googleDomain}/`);
+      return assigned ? googleDomain : null;
     });
     macAssignments = await Promise.all(promises);
   }
 
-  FACEBOOK_DOMAINS.map(async facebookDomain => {
-    const facebookCookieUrl = `https://${facebookDomain}/`;
+  GOOGLE_DOMAINS.map(async googleDomain => {
+    const facebookCookieUrl = `https://${googleDomain}/`;
 
     // dont clear cookies for facebookDomain if mac assigned (with or without www.)
     if (macAddonEnabled &&
-        (macAssignments.includes(facebookDomain) ||
-         macAssignments.includes(`www.${facebookDomain}`))) {
+      (macAssignments.includes(googleDomain) ||
+        macAssignments.includes(`www.${googleDomain}`))) {
       return;
     }
 
@@ -172,7 +172,7 @@ async function clearFacebookCookies () {
       }
 
       const cookies = await browser.cookies.getAll({
-        domain: facebookDomain,
+        domain: googleDomain,
         storeId
       });
 
@@ -184,27 +184,37 @@ async function clearFacebookCookies () {
         });
       });
       // Also clear Service Workers as it breaks detecting onBeforeRequest
-      await browser.browsingData.remove({hostnames: [facebookDomain]}, {serviceWorkers: true});
+      await browser.browsingData.remove({
+        hostnames: [googleDomain]
+      }, {
+        serviceWorkers: true
+      });
     });
   });
 }
 
-async function setupContainer () {
+async function setupContainer() {
   // Use existing Facebook container, or create one
-  const contexts = await browser.contextualIdentities.query({name: FACEBOOK_CONTAINER_NAME});
+  const contexts = await browser.contextualIdentities.query({
+    name: GOOGLE_CONTAINER_NAME
+  });
   if (contexts.length > 0) {
     facebookCookieStoreId = contexts[0].cookieStoreId;
   } else {
     const context = await browser.contextualIdentities.create({
-      name: FACEBOOK_CONTAINER_NAME,
-      color: FACEBOOK_CONTAINER_COLOR,
-      icon: FACEBOOK_CONTAINER_ICON
+      name: GOOGLE_CONTAINER_NAME,
+      color: GOOGLE_CONTAINER_COLOR,
+      icon: GOOGLE_CONTAINER_ICON
     });
     facebookCookieStoreId = context.cookieStoreId;
   }
 }
 
-function reopenTab ({url, tab, cookieStoreId}) {
+function reopenTab({
+  url,
+  tab,
+  cookieStoreId
+}) {
   browser.tabs.create({
     url,
     cookieStoreId,
@@ -215,7 +225,7 @@ function reopenTab ({url, tab, cookieStoreId}) {
   browser.tabs.remove(tab.id);
 }
 
-function isFacebookURL (url) {
+function isFacebookURL(url) {
   const parsedUrl = new URL(url);
   for (let facebookHostRE of facebookHostREs) {
     if (facebookHostRE.test(parsedUrl.host)) {
@@ -225,7 +235,7 @@ function isFacebookURL (url) {
   return false;
 }
 
-function shouldContainInto (url, tab) {
+function shouldContainInto(url, tab) {
   if (!url.startsWith("http")) {
     // we only handle URLs starting with http(s)
     return false;
@@ -246,7 +256,7 @@ function shouldContainInto (url, tab) {
   return false;
 }
 
-async function maybeReopenAlreadyOpenTabs () {
+async function maybeReopenAlreadyOpenTabs() {
   const maybeReopenTab = async tab => {
     const macAssigned = await getMACAssignment(tab.url);
     if (macAssigned) {
@@ -308,7 +318,7 @@ async function maybeReopenAlreadyOpenTabs () {
   });
 }
 
-async function containFacebook (options) {
+async function containFacebook(options) {
   // Listen to requests and open Facebook into its Container,
   // open other sites into the default tab context
   if (options.tabId === -1) {
@@ -342,7 +352,9 @@ async function containFacebook (options) {
   }
   if (shouldCancelEarly(tab, options)) {
     // We need to cancel early to prevent multiple reopenings
-    return {cancel: true};
+    return {
+      cancel: true
+    };
   }
   // Decided to contain
   reopenTab({
@@ -350,10 +362,12 @@ async function containFacebook (options) {
     tab,
     cookieStoreId
   });
-  return {cancel: true};
+  return {
+    cancel: true
+  };
 }
 
-(async function init () {
+(async function init() {
   await setupMACAddonListeners();
   macAddonEnabled = await isMACAddonEnabled();
 
@@ -375,15 +389,24 @@ async function containFacebook (options) {
     if (canceledRequests[options.tabId]) {
       delete canceledRequests[options.tabId];
     }
-  },{urls: ["<all_urls>"], types: ["main_frame"]});
+  }, {
+    urls: ["<all_urls>"],
+    types: ["main_frame"]
+  });
   browser.webRequest.onErrorOccurred.addListener((options) => {
     if (canceledRequests[options.tabId]) {
       delete canceledRequests[options.tabId];
     }
-  },{urls: ["<all_urls>"], types: ["main_frame"]});
+  }, {
+    urls: ["<all_urls>"],
+    types: ["main_frame"]
+  });
 
   // Add the request listener
-  browser.webRequest.onBeforeRequest.addListener(containFacebook, {urls: ["<all_urls>"], types: ["main_frame"]}, ["blocking"]);
+  browser.webRequest.onBeforeRequest.addListener(containFacebook, {
+    urls: ["<all_urls>"],
+    types: ["main_frame"]
+  }, ["blocking"]);
 
   maybeReopenAlreadyOpenTabs();
 })();

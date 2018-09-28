@@ -7,7 +7,7 @@
     "test": "eslint src test && npm run coverage",
     "test-watch": "mocha test/setup.js test/**/*.test.js --watch",
     "coverage": "nyc --reporter=html --reporter=text mocha test/setup.js test/**/*.test.js --timeout 60000",
-    "build": "npm test && web-ext build --overwrite-dest -s src"
+    "build": "web-ext build --overwrite-dest -s src"
   },
   "repository": {
     "type": "git",
